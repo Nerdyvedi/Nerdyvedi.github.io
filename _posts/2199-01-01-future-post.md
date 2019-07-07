@@ -1,6 +1,6 @@
 ---
-title: 'Future Blog Post'
-date: 2199-01-01
+title: 'Understanding AlphaGAN matting'
+date: 21st March 2019
 permalink: /posts/2012/08/blog-post-4/
 tags:
   - cool posts
@@ -8,4 +8,127 @@ tags:
   - category2
 ---
 
-This post will show up by default. To disable scheduling of future posts, edit `config.yml` and set `future: false`. 
+In this article, we will explore how Generative Adversial Networks can be used for Natural Image Matting.
+
+WHAT IS NATURAL IMAGE MATTING?
+Natural image matting is defined as the problem of accurately estimating the opacity of a foreground object in an image or video sequence.
+
+Formally, image matting approaches require as input an image, which is expected to contain a foreground object and the image background.
+
+Mathematically, every pixel i in the image is assumed to be a linear combination of the foreground and background colors,expressed as:
+
+Ii=αiFi+(1−αi)Bi, αi∈[0,1],
+
+where Ii represents the ith pixel of the Image, similarly Fi represents the value of ith pixel of the Foreground Image and Bi for the background image.α is the foreground opacity. We have 3 equations(For each R,G,B) and 7 unknowns.
+
+This is a severely ill posed problem, we cannot possibly solve this equation with just these values.
+
+Typically,some additional information in the form of scribbles or a trimap is given as additional information to decrease the difficulty of the problem.
+
+NOTE: One important thing is, Generally, alpha is equal to 1 for foreground(Not true for transparent foreground), 0 for background and lies between 0 to 1 in the boundary, where both foreground and background are present.For example in the trimap image above, the gray area is where both foreground(hair) and background are present.
+
+Generally the trimap serves as an initialization information and many methods propagate the alpha values from known image regions to the unknown region.
+
+
+
+PREREQUISITES
+
+    PatchGAN Discriminator.
+
+The difference between a PatchGAN and regular GAN discriminator is that rather the regular GAN maps from a 256x256 image to a single scalar output, which signifies “real” or “fake”, whereas the PatchGAN maps from 256x256 to an NxN array of outputs X, where each X_ij signifies whether the patch ij in the image is real or fake. Which is patch ij in the input? Well, output X_ij is just a neuron in a convnet, and we can trace back its receptive field to see which input pixels it is sensitive to.
+
+2. Atrous Spatial Pyramid Pooling (ASPP)
+
+Conventionally, at the transition of Conv layer and the fully connected layer , there is a single pooling layer or even no pooling layer.
+
+In Spatial Pyramid Pooling(SPP), there are multiple pooling layers with different scales.
+
+Let us say, there are 256 filters at the end of Convolutional Layer.There are 3 different pooling layer, 1 pools 1 value from each filter, other pools 4 and the last one pools 16.Hence we 1*256 , 4*256 and 16*256 as the outputs of respective pooling layers. The output of these pooling layers are then concatenated to form a one dimensional input to the fully connected layer.
+
+Atrous SPP just replaces the pooling layer with atrous(dilated) convolution
+
+3. 1x1 Convolutions
+
+I know it is a basic concept for many, but I have always wondered what exactly is the use of a 1x1 convolution.
+
+It is just used to change the number of features.For example, an image of 200 x 200 with 50 features on convolution with 20 filters of 1x1 would result in size of 200 x 200 x 20.
+
+4. Generative Adversial Networks
+
+This topic deserves another article, but I will try to keep it as small as possible.
+
+One neural network, called the generator, generates new data instances, while the other, the discriminator, evaluates them for authenticity; i.e. the discriminator decides whether each instance of data that it reviews belongs to the actual training dataset or not.
+
+The aim of Generator is to fool the discriminator and that of Discriminator is to make sure it catches the data which is fake.
+ARCHITECTURE
+
+AlphaGAN uses Generative Adversial network for natural Image matting.The generator of this network is a convolutional encoder-decoder network that is trained both with help of the ground-truth alphas as well as the adversarial loss from the discriminator, and the discriminator is a patchGAN Discriminator. We will discuss the architecture of both the generator and discriminator in detail
+GENERATOR
+
+The Generator is an encoder decoder network. Let me clearly state the Input and output of the Generator.
+
+Input: 4 Channel Input. 3 Channel consists of the RGB Image composed by the Foreground Object, Background Object and the Real Alpha, 4th channel is the trimap.
+
+Output:The Generator outputs a predicted alpha.
+
+ENCODER
+
+    The Encoder takes the ResNet50 Architecture, pretrained on ImageNet.
+    Convolutions in the 3rd and 4th block of the Resnet architecture are replaced by Dilated Convolutions with rate 2 and 4 respectively.
+    After the Resnet Block 4, the ASPP Module is added to resample features at several scales for accurately and efficiently predicting regions of an arbitrary scale
+    The output of ASPP is fed to the discriminator
+
+DECODER
+
+    Just contains Convolutional layers and skip connections.
+    Output of Encoder is bilinearly upsampled, so that the feature maps have the same resolution as those coming from Resnet block 1.The output of Resnet block 1 is fed to 1*1 Convolution(The number of dimensions are reduced) , and then concatenated with the features
+    3x3 Convolution is applied, then upsampled using the saved pooling indices in the first layer of the encoder , concatenated again with the feature maps from same resolution of the Encoder.
+    Upsampled again using transposed convolution and concatenated again with the Input Image, and then it is lead to some final convolution layers.
+    All of these layers are followed by ReLU activation functions and batch-normalization layers , except the last one, which is followed by the sigmoid activation function to scale the output of the generator between 0 and 1, as needed for an alpha prediction
+
+The Generator architecture(figure from paper)
+
+DISCRIMINATOR
+
+Let me clearly state what the input of discriminator would be.Input is of 4 channel
+
+Real : Image constructed by foreground , background and the real alpha
+
+Fake : Image constructed by foreground, background and the fake alpha(generated by generator)
+
+4th channel of the input in both case is the trimap.
+
+The Discriminator used here is the PatchGAN discriminator with N = 70 (NxN is the size of patch)
+
+OBJECTIVE
+
+The goal of our networks is to predict the true alpha of an image, given the trimap.The paper uses 3 Loss functions
+
+    Adversial Loss(Lgan) :
+
+Lgan(G,D)= log D(x)+log(1−D(C(G(x)))
+
+where x is a real input: an image composited from the ground-truth alpha and foreground appended with the trimap. C(y) is a composition function that takes the predicted alpha from G as an input and uses it to composite a fake image. G tries to generate alphas that are close to the ground-truth alpha, while D tries to distinguish real from fake composited images. G therefore tries to minimize Lgan against the discriminator D, which tries to maximize it
+
+2. Alpha Prediction Loss(Liα):
+
+It is the absolute difference between the ground truth alpha values and the predicted alpha values at each pixel. However, due to the non-differentiable property of absolute values, the following loss function is used to approximate it.
+
+Liα=√(αip−αig)2+2,αip,αig∈[0,1],
+
+where αip is the output of the prediction layer at pixel i thresholded between 0 and 1.αigis the ground truth alpha value at pixel i
+
+3. Composition Loss(Lic):
+
+The second loss is called the compositional loss, which is the absolute difference between the ground truth RGB colors and the predicted RGB colors composited by the groundtruth foreground, the ground truth background and the predicted alpha mattes. Similarly, we approximate it by usingt he following loss function.
+
+Lic=√(cip−cig)2+2.where c denotes the RGB channel,p denotes the image composited by the predicted alpha, and g denotes the image composited by the ground truth alphas.
+
+Hence, The total Loss, L(G,D) as a function of both G and D is equal to :
+
+L (G,D)= Lgan(G,D) + Lic(G) + Liα(G),
+
+where we aim to find parameters of G which minimize L and those of D which maximize L
+RESULTS
+
+It presents state-of-the-art results on the alphamatting online benchmark for the gradient error and give comparable results in others. The method is particularly well suited for fine structures like hair, which is of great importance in practical matting applications, e.g. in film/TV production
