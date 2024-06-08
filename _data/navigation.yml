@@ -1,10 +1,4 @@
 # main links links
 main:
-  - title: "My Projects"
-    url: /projects/
-
   - title: "Blog Posts"
-    url: /year-archive/    
-
-  - title: "Hire Me"
-    url: /hire/
+    url: /year-archive/   
