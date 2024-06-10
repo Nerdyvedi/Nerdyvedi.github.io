@@ -9,7 +9,5 @@ redirect_from:
 ---
 
 
-At the beginning of 2018, I committed to learning everything I could about machine learning, data science, and the tech industry.
-
-In this page, I document my understanding of Machine learning or Engineering concepts. I try to convey complex concepts in easy to understand way.
-
+The best way to ensure you've understood something is by explaining it to someone else.
+In this blog, I try and explain complex engineering concepts ins easy to understand manner.
