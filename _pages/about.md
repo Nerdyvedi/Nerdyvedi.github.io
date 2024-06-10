@@ -10,4 +10,4 @@ redirect_from:
 
 
 The best way to ensure you've understood something is by explaining it to someone else.
-In this blog, I try and explain complex engineering concepts ins easy to understand manner.
+In this blog, I try and explain complex engineering concepts in an easy to understand manner.
